@@ -1,0 +1,18 @@
+# Security: Ignore Secrets
+.env
+.env.local
+config.py
+
+# Python: Ignore compiled files and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Data: Ignore local database files
+*.db
+*.sqlite3
+
+# Logs
+*.log

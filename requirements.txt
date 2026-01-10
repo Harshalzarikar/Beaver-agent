@@ -1,0 +1,17 @@
+langchain-google-genai
+langgraph
+langchain_community
+tavily-python
+python-dotenv
+termcolor
+langchain-tavily
+uuid
+transformers
+torch
+langchain-tavily
+presidio-analyzer
+langgraph-checkpoint-sqlite
+fastapi
+uvicorn
+requests
+streamlit
