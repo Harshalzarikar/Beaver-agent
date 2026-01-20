@@ -22,9 +22,13 @@ except FileNotFoundError:
 except Exception:
     pass # Other secrets errors, fallback to env vars
 # Mode Selection: "api" (default) or "standalone" (Streamlit Cloud)
-# If NO_API_MODE env var is set, we use standalone mode
-IS_STANDALONE = os.environ.get("NO_API_MODE", "false").lower() == "true"
+# AUTO-DETECT: If API URL is localhost/127.0.0.1, assume Standalone (useful for cloud where localhost is empty)
+RAIL_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
+IS_LOCALHOST = "127.0.0.1" in RAIL_URL or "localhost" in RAIL_URL
+FORCE_STANDALONE = os.environ.get("NO_API_MODE", "").lower() == "true"
 
+# Fallback: If forced OR (it looks like localhost and we haven't explicitly disabled standalone)
+IS_STANDALONE = FORCE_STANDALONE or IS_LOCALHOST
 # Get API URL from environment variable
 RAIL_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
 
