@@ -6,7 +6,17 @@ from datetime import datetime
 
 # --- CONFIGURATION ---
 # Get API URL from environment variable (Render support)
-API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000/process-email")
+# Get API URL from environment variable
+RAIL_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
+
+# Normalize base URL (strip trailing slash and specific endpoint if present)
+if RAIL_URL.endswith("/process-email"):
+    API_BASE = RAIL_URL.replace("/process-email", "")
+else:
+    API_BASE = RAIL_URL.rstrip("/")
+
+API_ENDPOINT = f"{API_BASE}/process-email"
+HEALTH_ENDPOINT = f"{API_BASE}/health"
 
 st.set_page_config(
     page_title="Beaver Agent | Enterprise AI",
@@ -73,7 +83,7 @@ with st.sidebar:
     st.subheader("⚙️ System Status")
     try:
         # Check Health
-        health = requests.get(f"{API_URL.replace('/process-email', '')}/health", timeout=2)
+        health = requests.get(HEALTH_ENDPOINT, timeout=2)
         if health.status_code == 200:
             st.success(f"● System Online ({health.json().get('environment', 'prod')})")
         else:
@@ -81,7 +91,7 @@ with st.sidebar:
     except:
         st.error("● System Offline")
         
-    st.info(f"Backend: `{API_URL}`")
+    st.info(f"Backend: `{API_BASE}`")
     st.markdown("---")
     st.markdown("### 📊 Metrics")
     st.metric("Model", "Gemini 2.5 Flash")
@@ -147,7 +157,7 @@ if process_btn:
             headers = {"X-API-Key": request_api_key}
             
             payload = {"email_text": email_input}
-            response = requests.post(API_URL, json=payload, headers=headers, timeout=120)
+            response = requests.post(API_ENDPOINT, json=payload, headers=headers, timeout=120)
             
             my_bar.progress(100, text="✅ Done!")
             time.sleep(0.5)
@@ -203,6 +213,6 @@ if process_btn:
                 st.error(f"Server Error ({response.status_code}): {response.text}")
 
         except requests.exceptions.ConnectionError:
-            st.error(f"❌ Could not connect to Backend at `{API_URL}`. Is it running?")
+            st.error(f"❌ Could not connect to Backend at `{API_BASE}`. Is it running?")
         except Exception as e:
             st.error(f"❌ An unexpected error occurred: {e}")

@@ -31,5 +31,3 @@ services:
           type: web
           name: beaver-agent-api
           property: url
-          # Appends the endpoint to the base URL
-          envVarKey: API_URL_BASE  
