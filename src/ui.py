@@ -9,6 +9,10 @@ from datetime import datetime
 # Get API URL from environment variable
 RAIL_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
 
+# Ensure scheme (Render 'hostport' property excludes http://)
+if not RAIL_URL.startswith("http"):
+    RAIL_URL = f"http://{RAIL_URL}"
+
 # Normalize base URL (strip trailing slash and specific endpoint if present)
 if RAIL_URL.endswith("/process-email"):
     API_BASE = RAIL_URL.replace("/process-email", "")

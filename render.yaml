@@ -30,4 +30,4 @@ services:
         fromService:
           type: web
           name: beaver-agent-api
-          property: url
+          property: hostport
