@@ -6,7 +6,9 @@ from datetime import datetime
 import sys
 
 # Ensure project root is in python path for standalone mode imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# We use insert(0, ...) to PRIORITIZE the project root over the current directory (src/)
+# This ensures that "import src.config" looks for "src" in the project root, not inside "src/"
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # --- CONFIGURATION ---
 # Load Streamlit Secrets into Environment Variables (Critical for Cloud)
