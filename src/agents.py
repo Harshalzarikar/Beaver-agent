@@ -127,7 +127,7 @@ def router_node(state: AgentState):
         logger.info("Zero-Shot result", extra={"trace_id": tid, "label": top_label, "score": score})
         
         # If high confidence, return immediately (Save LLM cost)
-        if score > 0.70:
+        if score > 0.80:  # Raised threshold for better accuracy
             logger.info("High confidence, skipping LLM", extra={"trace_id": tid})
             if "lead" in top_label: return {"category": "lead", "confidence_score": float(score)}
             elif "complaint" in top_label: return {"category": "complaint", "confidence_score": float(score)}
@@ -138,29 +138,67 @@ def router_node(state: AgentState):
     except Exception as e:
         logger.warning("Zero-shot classifier failed", extra={"error": str(e)})
 
-    # Tier 2: LLM Classification (Slower but more accurate)
+    # Tier 2: LLM Classification with Few-Shot Examples + Chain-of-Thought
     llm = get_llm()
-    classify_prompt = f"""
-    Classify this email into exactly one category: 'lead', 'complaint', or 'spam'.
-    
-    RULES:
-    - 'lead': Wants to buy, inquire about product, or partnership.
-    - 'complaint': Unhappy, reporting bug, refund, or unsubscribe.
-    - 'spam': Irrelevant, phishing, ads, or nonsense.
-    
-    Return ONLY the category name.
-    
-    TEXT: "{clean_text[:5000]}"
-    """
+    classify_prompt = f"""You are an expert email classifier. Classify the email into exactly ONE category.
+
+CATEGORIES:
+- 'lead': Customer wants to buy, inquire about product/service, request demo, or explore partnership.
+- 'complaint': Customer is unhappy, reporting issue, requesting refund, or wants to unsubscribe.
+- 'spam': Irrelevant message, phishing attempt, advertisement, or nonsensical content.
+
+EXAMPLES:
+
+Example 1:
+Email: "Hi, I saw your product on LinkedIn. We're a 50-person startup looking for enterprise solutions. Can we schedule a demo next week? - Sarah, CTO at TechFlow"
+Reasoning: The sender identifies themselves, mentions their company size, and explicitly requests a demo. This is a clear sales inquiry.
+Category: lead
+
+Example 2:
+Email: "I've been waiting 2 weeks for my order #12345 and it still hasn't arrived. This is unacceptable. I want a refund immediately."
+Reasoning: The sender is frustrated, mentions a specific order issue, and demands a refund. This is clearly a complaint.
+Category: complaint
+
+Example 3:
+Email: "Congratulations! You've been selected to receive a FREE iPhone 15! Click here to claim your prize: bit.ly/free-prize"
+Reasoning: This uses urgency tactics, offers something "free", and has a suspicious link. Classic spam/phishing.
+Category: spam
+
+Example 4:
+Email: "Please remove me from your mailing list. I no longer wish to receive these emails."
+Reasoning: The sender wants to unsubscribe, which indicates dissatisfaction with current communication.
+Category: complaint
+
+NOW CLASSIFY THIS EMAIL:
+Email: "{clean_text[:3000]}"
+
+Think step-by-step:
+1. What is the sender's intent?
+2. Are they asking about products/services (lead), expressing dissatisfaction (complaint), or is this irrelevant/suspicious (spam)?
+3. What specific words or phrases indicate the category?
+
+Reasoning: [Your analysis]
+Category: [lead/complaint/spam]"""
     
     try:
         response = llm.invoke(classify_prompt)
-        category = response.content.strip().lower()
+        content = response.content.strip().lower()
         
-        # Normalize
-        if "lead" in category: category = "lead"
-        elif "complaint" in category: category = "complaint"
-        else: category = "spam"
+        # Extract category from response
+        if "category: lead" in content or content.endswith("lead"):
+            category = "lead"
+        elif "category: complaint" in content or content.endswith("complaint"):
+            category = "complaint"
+        elif "category: spam" in content or content.endswith("spam"):
+            category = "spam"
+        else:
+            # Fallback extraction
+            if "lead" in content.split()[-5:]:
+                category = "lead"
+            elif "complaint" in content.split()[-5:]:
+                category = "complaint"
+            else:
+                category = "spam"
         
         logger.info("LLM Classification result", extra={
             "trace_id": tid, 
@@ -168,11 +206,11 @@ def router_node(state: AgentState):
             "model": settings.model_provider
         })
         
-        return {"category": category, "confidence_score": 0.9} # High confidence for LLM
+        return {"category": category, "confidence_score": 0.95}  # High confidence for LLM with CoT
         
     except Exception as e:
         logger.error("Classification failed", extra={"error": str(e)})
-        return {"category": "spam", "confidence_score": 0.0} # Fail safe
+        return {"category": "spam", "confidence_score": 0.0}  # Fail safe
 
 
 def summarizer_node(state: AgentState):
@@ -206,7 +244,7 @@ def summarizer_node(state: AgentState):
 
 
 def researcher_node(state: AgentState):
-    """The Detective: Finds company info."""
+    """The Detective: Finds company info with enhanced extraction."""
     tid = state.get("trace_id", "N/A")
     
     if TEST_MODE:
@@ -219,30 +257,86 @@ def researcher_node(state: AgentState):
     
     company_name = "Unknown"
     summary = "No public information found."
+    
+    # Common email providers to ignore
+    COMMON_PROVIDERS = {
+        "gmail", "yahoo", "hotmail", "outlook", "aol", "icloud", 
+        "protonmail", "mail", "live", "msn", "ymail", "googlemail"
+    }
 
     try:
-        # 1. Regex/Heuristic Extraction (Try first to save LLM quota)
-        email_match = re.search(r"@([\w.-]+\.\w+)", state['input_text'])
-        if email_match:
-            company_name = email_match.group(1).split('.')[0].capitalize()
-            # common providers check could go here
+        input_text = state['input_text']
         
-        # 2. AI Extraction (Fallback)
-        if not company_name or "Unknown" in company_name or company_name.lower() in ["gmail", "yahoo", "hotmail"]:
+        # 1. Multi-Pattern Extraction (Prioritized)
+        extraction_methods = []
+        
+        # Method A: Email domain extraction
+        email_match = re.search(r"@([\w.-]+)\.(com|org|net|io|co|ai|tech|biz)", input_text, re.IGNORECASE)
+        if email_match:
+            domain = email_match.group(1).lower()
+            if domain not in COMMON_PROVIDERS:
+                extraction_methods.append(("email_domain", domain.capitalize()))
+        
+        # Method B: Signature block patterns (e.g., "- John, CEO at TechCorp")
+        sig_patterns = [
+            r"(?:at|from|@)\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+)?(?:\s+(?:Inc|LLC|Corp|Ltd|Co))?)",
+            r"([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+)?)\s+(?:Inc|LLC|Corp|Ltd|Co\.?)\b",
+            r"(?:Best|Regards|Sincerely),?\s*\n.*?\n([A-Z][A-Za-z0-9\s]+?)(?:\n|$)"
+        ]
+        for pattern in sig_patterns:
+            match = re.search(pattern, input_text)
+            if match:
+                extracted = match.group(1).strip()
+                if len(extracted) > 2 and extracted.lower() not in COMMON_PROVIDERS:
+                    extraction_methods.append(("signature", extracted))
+                    break
+        
+        # 2. Use best extraction or fallback to LLM
+        if extraction_methods:
+            # Prefer signature over email domain
+            for method, name in extraction_methods:
+                if method == "signature":
+                    company_name = name
+                    break
+            if company_name == "Unknown":
+                company_name = extraction_methods[0][1]
+            logger.info(f"Extracted company via regex: {company_name}", extra={"trace_id": tid})
+        else:
+            # LLM Extraction with better prompt
             try:
-                extract_prompt = f"Extract the company name from this text. Return ONLY the name or 'Unknown'. Text: {state['input_text']}"
+                extract_prompt = f"""Extract the company or organization name from this email.
+
+RULES:
+1. Look for company names in signatures, email domains, or explicit mentions.
+2. Ignore common email providers (Gmail, Yahoo, etc.).
+3. Return ONLY the company name, nothing else.
+4. If no company found, return exactly: Unknown
+
+Email:
+{input_text[:2000]}
+
+Company Name:"""
                 response = llm.invoke(extract_prompt)
-                company_name = response.content.strip()
+                extracted = response.content.strip()
+                
+                # Validate extraction
+                if extracted and len(extracted) < 50 and extracted.lower() != "unknown":
+                    if extracted.lower() not in COMMON_PROVIDERS:
+                        company_name = extracted
+                        logger.info(f"Extracted company via LLM: {company_name}", extra={"trace_id": tid})
+                        
             except Exception as e:
                 logger.warning("Company extraction LLM failed", extra={"error": str(e)})
-                if not company_name:
-                    company_name = "Unknown"
             
-            # 3. Search
-            if company_name and company_name != "Unknown":
-                logger.info(f"Searching for company: {company_name}", extra={"trace_id": tid})
-                search_results = search_tool.invoke(f"{company_name} latest news business")
-                summary = "\n".join([res['content'] for res in search_results])
+        # 3. Web Search for company info
+        if company_name and company_name != "Unknown":
+            logger.info(f"Searching for company: {company_name}", extra={"trace_id": tid})
+            try:
+                search_results = search_tool.invoke(f"{company_name} company business")
+                if search_results:
+                    summary = "\n".join([res.get('content', '')[:500] for res in search_results[:2]])
+            except Exception as e:
+                logger.warning("Search failed", extra={"error": str(e)})
         
     except Exception as e:
         logger.error("Research failed", extra={"trace_id": tid, "error": str(e)})
@@ -251,7 +345,7 @@ def researcher_node(state: AgentState):
 
 
 def writer_node(state: AgentState):
-    """The Author: Writes the email."""
+    """The Author: Writes professional, tailored email responses."""
     tid = state.get("trace_id", "N/A")
     
     if TEST_MODE:
@@ -262,35 +356,64 @@ def writer_node(state: AgentState):
     llm = get_llm()
     sender = settings.get_sender_config()
     
-    prompt = f"""
-    You are a sales agent from {sender['company_name']}. 
-    Write a professional email to {state['company_name']}.
+    prompt = f"""You are a professional sales representative at {sender['company_name']}.
+Write a tailored email response to the inquiry from {state.get('company_name', 'the customer')}.
 
-    CONTEXT:
-    - Incoming Email: "{state['input_text']}"
-    - Research: "{state['company_info']}"
+INCOMING EMAIL:
+{state['input_text'][:2000]}
 
-    RULES:
-    1. Be polite and helpful.
-    2. Do NOT offer discounts.
-    3. Keep [PLACEHOLDERS] intact.
-    4. Use this signature:
-    
-    Best regards,
-    {sender['name']}
-    {sender['title']}
-    {sender['company_name']}
-    """
+RESEARCH ON SENDER:
+{state.get('company_info', 'No information available.')[:1000]}
+
+EXAMPLES OF GOOD RESPONSES:
+
+Example 1 (Product Inquiry):
+"Dear Sarah,
+
+Thank you for reaching out about our enterprise solutions! Given TechFlow's growth trajectory, I'd recommend our Pro tier which scales seamlessly from 50 to 500 users.
+
+I'd love to schedule a 20-minute demo to show you how companies similar to yours have reduced onboarding time by 40%. Would Thursday at 2 PM work for your team?
+
+Best regards,
+[Signature]"
+
+Example 2 (Partnership Request):
+"Dear Michael,
+
+I appreciate your interest in exploring a partnership with us. After reviewing DataSync Inc's impressive work in data integration, I believe there's strong potential for collaboration.
+
+Let's set up a call to discuss synergies. Please let me know your availability next week.
+
+Best regards,
+[Signature]"
+
+YOUR TASK:
+1. DIRECTLY address the sender's specific question or request
+2. Reference their company or situation specifically (use the research)
+3. Propose a clear next step (meeting, demo, call, etc.)
+4. Keep the response between 100-200 words
+5. Maintain a professional but warm tone
+6. Preserve any [PLACEHOLDER] tokens exactly as they appear
+
+IMPORTANT: Do NOT offer discounts, free trials, or make promises you can't keep.
+
+Sign off with:
+Best regards,
+{sender['name']}
+{sender['title']}
+{sender['company_name']}
+
+Write the email now:"""
     
     response = llm.invoke(prompt)
     email_draft = response.content
     
-    # Guardrails
-    risky_patterns = [r"\$\d+", r"free (iphone|money)", r"click here"]
+    # Guardrails - Block risky content
+    risky_patterns = [r"\$\d+", r"free (iphone|money|trial)", r"click here", r"guaranteed"]
     for pattern in risky_patterns:
         if re.search(pattern, email_draft, re.IGNORECASE):
             logger.warning("Blocked risky content", extra={"trace_id": tid, "pattern": pattern})
-            email_draft = "[SYSTEM BLOCK] Unsafe content removed."
+            email_draft = "[SYSTEM BLOCK] Unsafe content removed. Please review manually."
             break
 
     return {
@@ -300,21 +423,103 @@ def writer_node(state: AgentState):
 
 
 def verifier_node(state: AgentState):
-    """The Manager: Approves or Rejects."""
+    """The Manager: Quality verification with structured criteria."""
+    tid = state.get("trace_id", "N/A")
+    logger.info("Verifying draft quality", extra={"trace_id": tid})
+    
     llm = get_llm()
-    prompt = f"Review this email. If good, say APPROVE. If bad, say REJECT. Draft: {state['email_draft']}"
-    response = llm.invoke(prompt)
-    final_status = "approved" if "APPROVE" in response.content else "rejected"
+    prompt = f"""You are a quality assurance manager reviewing an email draft before sending.
+
+DRAFT TO REVIEW:
+{state.get('email_draft', '')[:2000]}
+
+ORIGINAL INQUIRY:
+{state.get('input_text', '')[:500]}
+
+EVALUATION CRITERIA:
+1. PROFESSIONAL TONE: Is the language appropriate and courteous?
+2. ADDRESSES REQUEST: Does it directly answer the sender's question/need?
+3. CLEAR NEXT STEP: Is there a concrete call-to-action?
+4. NO RISKY CONTENT: No unauthorized discounts, suspicious links, or false promises?
+5. PROPER FORMATTING: Has greeting, body, and signature?
+
+Score each criterion 1-5 (1=poor, 5=excellent).
+
+DECISION RULES:
+- APPROVE if average score >= 3.5 AND no score below 2
+- REJECT if any score is 1 OR average score < 3
+
+Your response format:
+SCORES:
+- Professional Tone: X/5
+- Addresses Request: X/5
+- Clear Next Step: X/5
+- No Risky Content: X/5
+- Proper Formatting: X/5
+
+VERDICT: [APPROVE/REJECT]
+REASON: [Brief explanation]"""
+    
+    try:
+        response = llm.invoke(prompt)
+        content = response.content.upper()
+        
+        if "APPROVE" in content:
+            final_status = "approved"
+        else:
+            final_status = "rejected"
+            
+        logger.info(f"Verification result: {final_status}", extra={"trace_id": tid})
+        
+    except Exception as e:
+        logger.error("Verification failed", extra={"error": str(e)})
+        final_status = "rejected"  # Default to reject on error
+        
     return {"final_status": final_status}
 
 
 def support_node(state: AgentState):
-    """The Support Agent: Handles complaints."""
+    """The Support Agent: Professional complaint handling."""
     tid = state.get("trace_id", "N/A")
-    logger.info("Drafting support apology", extra={"trace_id": tid})
+    logger.info("Drafting support response", extra={"trace_id": tid})
     
     llm = get_llm()
-    prompt = f"Write a polite apology to: {state['input_text']}. Keep tokens like [PHONE_...] intact."
+    sender = settings.get_sender_config()
+    
+    prompt = f"""You are a customer support specialist at {sender['company_name']}.
+Write a professional and empathetic response to this customer complaint:
+
+COMPLAINT:
+{state.get('input_text', '')[:2000]}
+
+GUIDELINES:
+1. Acknowledge their frustration with empathy
+2. Apologize sincerely without being defensive
+3. If applicable, explain what went wrong (briefly)
+4. Propose a concrete solution or next step
+5. Preserve any [PLACEHOLDER] tokens exactly as they appear
+6. Keep response between 100-150 words
+
+EXAMPLE RESPONSE:
+"Dear [Customer],
+
+I sincerely apologize for the frustration you've experienced with your order. This is not the level of service we strive to provide.
+
+I've escalated your case to our fulfillment team for immediate attention. You can expect an update within 24 hours, and we'll do everything possible to resolve this quickly.
+
+Thank you for bringing this to our attention.
+
+Best regards,
+[Support Rep]"
+
+Sign off with:
+Best regards,
+{sender['name']}
+Customer Support Team
+{sender['company_name']}
+
+Write the response now:"""
+    
     response = llm.invoke(prompt)
     
     return {"email_draft": response.content, "final_status": "escalated"}

@@ -109,7 +109,9 @@ class PIIManager:
             language='en',
             entities=[
                 "PHONE_NUMBER", "EMAIL_ADDRESS", "PERSON", 
-                "CREDIT_CARD", "LOCATION", "DATE_TIME", "IBAN_CODE"
+                "CREDIT_CARD", "LOCATION", "DATE_TIME", "IBAN_CODE",
+                # Enhanced PII detection
+                "US_SSN", "IP_ADDRESS", "US_PASSPORT", "NRP"
             ]
         )
         
