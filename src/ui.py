@@ -3,6 +3,10 @@ import requests
 import os
 import time
 from datetime import datetime
+import sys
+
+# Ensure project root is in python path for standalone mode imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # --- CONFIGURATION ---
 # Load Streamlit Secrets into Environment Variables (Critical for Cloud)
