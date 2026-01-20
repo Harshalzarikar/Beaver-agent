@@ -1,0 +1,35 @@
+services:
+  # 1. Backend Service (FastAPI)
+  - type: web
+    name: beaver-agent-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: ENVIRONMENT
+        value: production
+      - key: MODEL_PROVIDER
+        value: gemini
+      # You will need to add these in Render Dashboard:
+      # - GOOGLE_API_KEY
+      # - TAVILY_API_KEY
+      # - REDIS_URL
+
+  # 2. Frontend Service (Streamlit)
+  - type: web
+    name: beaver-agent-ui
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run src/ui.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: API_URL
+        fromService:
+          type: web
+          name: beaver-agent-api
+          property: url
+          # Appends the endpoint to the base URL
+          envVarKey: API_URL_BASE  

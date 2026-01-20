@@ -8,6 +8,7 @@ class AgentState(TypedDict):
     
     # --- 2. The Logic Flags ---
     category: str               # "lead", "complaint", "spam"
+    confidence_score: float     # Classification confidence
     revision_count: int         # To stop infinite loops
     final_status: str           # "approved", "rejected"
     

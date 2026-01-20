@@ -7,6 +7,10 @@ from src.db import init_db, save_lead
 # Load Keys (LangSmith + Google)
 load_dotenv(find_dotenv())
 
+# Suppress Pydantic warnings from langchain_tavily
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="langchain_tavily")
+
 def run_scenario(input_message: str, scenario_name: str):
     print(f"\n\n🚀 STARTING SCENARIO: {scenario_name}")
     print("=" * 60)

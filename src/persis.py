@@ -1,9 +1,6 @@
-# File: src/persistence.py
 from langgraph.checkpoint.memory import MemorySaver
 
 def get_checkpointer():
-    """
-    Uses RAM for checkpointing.
-    Perfect for Async demos to avoid SQLite file-lock issues.
-    """
+    # Using In-Memory for Demo speed.
+    # In PROD: Switch to AsyncPostgresSaver
     return MemorySaver()

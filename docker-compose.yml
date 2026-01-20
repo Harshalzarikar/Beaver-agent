@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. The Backend API
+  api:
+    build: .
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/beaver_db
+    depends_on:
+      - redis
+      - postgres
+
+  # 2. The Streamlit Frontend
+  ui:
+    build: .
+    command: streamlit run src/ui.py --server.port 8501
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000/process-email
+    depends_on:
+      - api
+
+  # 3. Real Database (Postgres) - Replaces SQLite
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: beaver_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 4. Real Queue (Redis) - Replaces Python List
+  redis:
+    image: redis:7
+
+volumes:
+  postgres_data:

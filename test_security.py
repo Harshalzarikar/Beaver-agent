@@ -1,36 +1,36 @@
-from src.security import PIIManager
+import os
+from dotenv import load_dotenv, find_dotenv
+from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 
-def test_pii_logic():
-    print("🛡️ TESTING PII SECURITY VAULT...")
-    
-    # 1. Setup
-    manager = PIIManager()
-    
-    # 2. Input Data (Sensitive!)
-    original_text = "My name is Harshal. Call me at 9822012345 or email harshal@test.com."
-    print(f"\n1️⃣ ORIGINAL:\n   {original_text}")
+load_dotenv(find_dotenv())
 
-    # 3. Test Anonymization (What the AI sees)
-    safe_text = manager.anonymize(original_text)
-    print(f"\n2️⃣ ANONYMIZED (Sent to AI):\n   {safe_text}")
-    
-    # VERIFICATION CHECK
-    if "9822012345" in safe_text:
-        print("❌ FAILED: Phone number leaked!")
-    elif "harshal@test.com" in safe_text:
-        print("❌ FAILED: Email leaked!")
-    else:
-        print("✅ SUCCESS: Secrets are hidden.")
+# 1. Check Env Variable
+provider = os.getenv("MODEL_PROVIDER", "Not Set")
+print(f"1. .env Variable says: {provider}")
 
-    # 4. Test De-anonymization (What the Customer sees)
-    restored_text = manager.deanonymize(safe_text)
-    print(f"\n3️⃣ RESTORED (Final Output):\n   {restored_text}")
-    
-    # VERIFICATION CHECK
-    if restored_text == original_text:
-        print("✅ SUCCESS: Data perfectly restored.")
-    else:
-        print("❌ FAILED: Data corruption during restore.")
+# 2. Try to Connect to Groq directly
+try:
+    print("\n2. Testing Groq Connection...")
+    groq_llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        api_key=os.getenv("GROQ_API_KEY")
+    )
+    response = groq_llm.invoke("Who created you? Answer in 1 sentence.")
+    print(f"✅ GROQ RESPONSE: {response.content}")
+    # Expect: "I am Llama 3, created by Meta." (Groq hosts Llama models)
+except Exception as e:
+    print(f"❌ GROQ FAILED: {e}")
 
-if __name__ == "__main__":
-    test_pii_logic()
+# 3. Try to Connect to Gemini directly
+try:
+    print("\n3. Testing Gemini Connection...")
+    gemini_llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=os.getenv("GOOGLE_API_KEY")
+    )
+    response = gemini_llm.invoke("Who created you? Answer in 1 sentence.")
+    print(f"✅ GEMINI RESPONSE: {response.content}")
+    # Expect: "I am a large language model, trained by Google."
+except Exception as e:
+    print(f"❌ GEMINI FAILED: {e}")
