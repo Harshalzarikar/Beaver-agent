@@ -5,7 +5,21 @@ import time
 from datetime import datetime
 
 # --- CONFIGURATION ---
-# Get API URL from environment variable (Render support)
+# Load Streamlit Secrets into Environment Variables (Critical for Cloud)
+if hasattr(st, "secrets"):
+    # 1. Load flat secrets
+    for key, value in st.secrets.items():
+        if isinstance(value, str):
+            os.environ[key] = value
+    # 2. Load nested 'general' secrets
+    if "general" in st.secrets:
+        for key, value in st.secrets["general"].items():
+            os.environ[key] = str(value)
+
+# Mode Selection: "api" (default) or "standalone" (Streamlit Cloud)
+# If NO_API_MODE env var is set, we use standalone mode
+IS_STANDALONE = os.environ.get("NO_API_MODE", "false").lower() == "true"
+
 # Get API URL from environment variable
 RAIL_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
 
@@ -21,6 +35,15 @@ else:
 
 API_ENDPOINT = f"{API_BASE}/process-email"
 HEALTH_ENDPOINT = f"{API_BASE}/health"
+
+if IS_STANDALONE:
+    # Direct Import for Monolithic Deployment
+    try:
+        from src.graph import graph
+        import uuid
+        print("⚠️ Running in STANDALONE mode (Direct Graph execution)")
+    except ImportError as e:
+        st.error(f"Failed to import graph for standalone mode: {e}")
 
 st.set_page_config(
     page_title="Beaver Agent | Enterprise AI",
@@ -85,17 +108,22 @@ with st.sidebar:
     st.divider()
     
     st.subheader("⚙️ System Status")
-    try:
-        # Check Health
-        health = requests.get(HEALTH_ENDPOINT, timeout=2)
-        if health.status_code == 200:
-            st.success(f"● System Online ({health.json().get('environment', 'prod')})")
-        else:
-            st.error("● System Degraded")
-    except:
-        st.error("● System Offline")
-        
-    st.info(f"Backend: `{API_BASE}`")
+    
+    if IS_STANDALONE:
+        st.success(f"● Standalone Mode (Streamlit Cloud)")
+        st.info("Running locally in-app")
+    else:
+        try:
+            # Check Health
+            health = requests.get(HEALTH_ENDPOINT, timeout=2)
+            if health.status_code == 200:
+                st.success(f"● System Online ({health.json().get('environment', 'prod')})")
+            else:
+                st.error("● System Degraded")
+        except:
+            st.error("● System Offline")
+            
+        st.info(f"Backend: `{API_BASE}`")
     st.markdown("---")
     st.markdown("### 📊 Metrics")
     st.metric("Model", "Gemini 2.5 Flash")
@@ -155,21 +183,46 @@ if process_btn:
             my_bar.progress(percent, text=label)
 
         try:
-            # API CALL
-            # Use environment API key or fallback to the first dev key
-            request_api_key = os.environ.get("FRONTEND_API_KEY", "your-secret-api-key-1")
-            headers = {"X-API-Key": request_api_key}
+            data = {}
             
-            payload = {"email_text": email_input}
-            response = requests.post(API_ENDPOINT, json=payload, headers=headers, timeout=120)
+            if IS_STANDALONE:
+                # --- DIRECT GRAPH EXECUTION ---
+                trace_id = str(uuid.uuid4())
+                initial_state = {
+                    "input_text": email_input,
+                    "trace_id": trace_id,
+                    "revision_count": 0
+                }
+                
+                # Run the graph
+                result = graph.invoke(initial_state)
+                
+                # Map result to UI format
+                data = {
+                    "category": result.get("category", "unknown"),
+                    "company": result.get("company_name", "Unknown"),
+                    "trace_id": trace_id,
+                    "draft": result.get("email_draft", "No draft created"),
+                    "confidence_score": result.get("confidence_score", 0.0)
+                }
+                
+            else:
+                # --- API EXECUTION ---
+                request_api_key = os.environ.get("FRONTEND_API_KEY", "your-secret-api-key-1")
+                headers = {"X-API-Key": request_api_key}
+                
+                payload = {"email_text": email_input}
+                response = requests.post(API_ENDPOINT, json=payload, headers=headers, timeout=120)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                else:
+                    st.error(f"Server Error ({response.status_code}): {response.text}")
+                    st.stop()
             
-            my_bar.progress(100, text="✅ Done!")
-            time.sleep(0.5)
-            my_bar.empty()
-            
-            if response.status_code == 200:
-                data = response.json()
+            if data: # Proceed if we have data
                 duration = round(time.time() - start_time, 2)
+
                 
                 # --- RESULTS DISPLAY ---
                 st.balloons()
