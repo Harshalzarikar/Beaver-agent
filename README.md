@@ -16,6 +16,44 @@ An enterprise-grade AI-powered email processing system that intelligently routes
 - **🐳 Container-Ready**: Multi-stage Docker builds, docker-compose orchestration
 - **🔄 CI/CD Pipeline**: Automated testing, linting, security scanning, deployment
 - **📈 Scalable Architecture**: Horizontal scaling, load balancing ready
+- **🧠 Hybrid Intelligence**: Cost-optimized tiered classification (Zero-Shot + LLM Fallback)
+
+## 💡 End-to-End Use Case
+
+### Scenario: The Solar Panel Inquiry
+
+**1. Input**
+User receives an email:
+> "Hi, I'm John Smith (555-0199). I want to install solar panels for my 5000 sq ft warehouse in Austin, TX. Can you give me a quote? - CEO, GreenTech Logistics"
+
+**2. 🕵️ PII Redaction (Privacy First)**
+Before processing, the **Security Node** intercepts and redacts sensitive data using the Redis Vault:
+> "Hi, I'm [PERSON_1] ([PHONE_1]). I want to install solar panels for my 5000 sq ft warehouse in [LOCATION_1]. Can you give me a quote? - CEO, GreenTech Logistics"
+
+**3. 🧠 Hybrid Classification (Cost-Optimized)**
+The **Router Node** analyzes intent:
+- **Tier 1**: Checks with Zero-Shot Classifier. (Result: "Sales Lead" with **92% Confidence**)
+- **Action**: High confidence detected -> Skips expensive LLM call. Routes to **Lead Pipeline**.
+
+**4. 🌍 Company Research**
+The **Researcher Node** extracts "GreenTech Logistics" and scans the web:
+- *Found*: "GreenTech Logistics is a transport company based in Austin, focusing on sustainable supply chains."
+- *Insight*: They value sustainability -> Draft should emphasize "eco-friendly" benefits.
+
+**5. ✍️ Intelligent Drafting**
+The **Writer Node** generates a personalized response:
+- Uses extracted template
+- Injects research insights
+- Restores PII placeholders (replaces `[PERSON_1]` back with "John Smith")
+
+**6. ✅ Verification & Output**
+The **Verifier Node** checks for quality and safety.
+**Final Output**:
+> "Dear John Smith,
+>
+> Thank you for reaching out! We'd love to help power GreenTech Logistics's warehouse with sustainable energy. Given your focus on sustainable supply chains, our high-efficiency commercial panels would be a perfect fit..."
+
+---
 
 ## 🏗️ Architecture
 
