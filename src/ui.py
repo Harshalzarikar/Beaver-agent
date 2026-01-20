@@ -6,16 +6,21 @@ from datetime import datetime
 
 # --- CONFIGURATION ---
 # Load Streamlit Secrets into Environment Variables (Critical for Cloud)
-if hasattr(st, "secrets"):
-    # 1. Load flat secrets
-    for key, value in st.secrets.items():
-        if isinstance(value, str):
-            os.environ[key] = value
-    # 2. Load nested 'general' secrets
-    if "general" in st.secrets:
-        for key, value in st.secrets["general"].items():
-            os.environ[key] = str(value)
-
+# Load Streamlit Secrets into Environment Variables (Critical for Cloud)
+try:
+    if hasattr(st, "secrets"):
+        # 1. Load flat secrets
+        for key, value in st.secrets.items():
+            if isinstance(value, str):
+                os.environ[key] = value
+        # 2. Load nested 'general' secrets
+        if "general" in st.secrets:
+            for key, value in st.secrets["general"].items():
+                os.environ[key] = str(value)
+except FileNotFoundError:
+    pass # Local execution without secrets.toml
+except Exception:
+    pass # Other secrets errors, fallback to env vars
 # Mode Selection: "api" (default) or "standalone" (Streamlit Cloud)
 # If NO_API_MODE env var is set, we use standalone mode
 IS_STANDALONE = os.environ.get("NO_API_MODE", "false").lower() == "true"
