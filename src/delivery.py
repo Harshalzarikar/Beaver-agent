@@ -12,8 +12,9 @@ class EmailSender:
     Handles sending emails via SMTP.
     """
     def __init__(self, smtp_server: str = None, smtp_port: int = None, user: str = None, password: str = None):
-        self.smtp_server = smtp_server or settings.smtp_server
-        self.smtp_port = smtp_port or settings.smtp_port
+        # Defensive getattr to handle stale config on server
+        self.smtp_server = smtp_server or getattr(settings, 'smtp_server', "smtp.gmail.com") 
+        self.smtp_port = smtp_port or getattr(settings, 'smtp_port', 587)
         self.user = user or settings.email_user
         self.password = password or settings.email_password
 
