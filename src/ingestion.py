@@ -85,6 +85,8 @@ class EmailIngestor:
                         
                         # Parse Body
                         body = ""
+                        is_html = False
+                        
                         if msg.is_multipart():
                             for part in msg.walk():
                                 content_type = part.get_content_type()
@@ -98,17 +100,37 @@ class EmailIngestor:
                                     # Get text/plain content
                                     if content_type == "text/plain":
                                         body = part.get_payload(decode=True).decode()
+                                        is_html = False
                                         break # Prefer plain text
                                     elif content_type == "text/html":
                                         # Fallback to HTML if no plain text found yet
                                         if not body:
                                             body = part.get_payload(decode=True).decode()
+                                            is_html = True
                                 except:
                                     pass
                         else:
                             # Not multipart
                             body = msg.get_payload(decode=True).decode()
-                            
+                            content_type = msg.get_content_type()
+                            if content_type == "text/html":
+                                is_html = True
+                        
+                        # CLEAN HTML IF NEEDED
+                        if is_html and body:
+                            try:
+                                from bs4 import BeautifulSoup
+                                soup = BeautifulSoup(body, "html.parser")
+                                # Get text with separator to preserve paragraphs
+                                body = soup.get_text(separator="\n").strip()
+                                # Clean up excessive newlines
+                                import re
+                                body = re.sub(r'\n\s*\n', '\n\n', body)
+                            except ImportError:
+                                logger.warning("BeautifulSoup not found. Returning raw HTML.")
+                            except Exception as e:
+                                logger.error(f"Failed to clean HTML: {e}")
+
                         emails.append({
                             "id": e_id.decode(),
                             "subject": subject,
