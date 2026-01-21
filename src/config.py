@@ -147,11 +147,9 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        # Validate API keys based on provider
-        if self.model_provider == "gemini" and not self.google_api_key:
-            raise ValueError("GOOGLE_API_KEY is required when using Gemini provider")
-        if self.model_provider == "groq" and not self.groq_api_key:
-            raise ValueError("GROQ_API_KEY is required when using Groq provider")
+        # Validation relaxed for Streamlit Cloud startup resilience
+        # Checks will happen at runtime in the agents/UI instead
+        pass
     
     @property
     def is_production(self) -> bool:
