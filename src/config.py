@@ -125,6 +125,11 @@ class Settings(BaseSettings):
         description="Maximum email text length"
     )
     
+    # --- Email Ingestion (IMAP) ---
+    imap_server: str = Field(default="imap.gmail.com", description="IMAP Server Address")
+    email_user: str | None = Field(default=None, description="Email Username")
+    email_password: str | None = Field(default=None, description="Email App Password")
+    
     # --- Sender Configuration ---
     sender_name: str = Field(default="Harshal Zarikar", description="Sender name")
     sender_title: str = Field(default="Sales Manager", description="Sender title")
