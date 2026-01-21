@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # --- API Keys ---
     google_api_key: str | None = Field(default=None, description="Google Gemini API key")
     groq_api_key: str | None = Field(default=None, description="Groq API key")
-    tavily_api_key: str = Field(..., description="Tavily search API key")
+    tavily_api_key: str | None = Field(default=None, description="Tavily search API key")
     
     # --- LangSmith Tracing ---
     langchain_api_key: str | None = Field(default=None, description="LangSmith API key")
