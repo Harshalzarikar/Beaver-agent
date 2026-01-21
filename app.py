@@ -1,13 +1,24 @@
+import sys
+import os
+
+# -----------------------------------------------------------------------------
+# CRITICAL PATH FIX: Force Project Root into sys.path
+# This prevents "ModuleNotFoundError: No module named 'src.config'"
+# -----------------------------------------------------------------------------
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+# -----------------------------------------------------------------------------
+
 import streamlit as st
 import requests
-import os
 import time
 from datetime import datetime
-import sys
 import uuid
 
-# --- CONFIGURATION ---
-# Load Streamlit Secrets into Environment Variables (Critical for Cloud)
+# --- CRITICAL: LOAD SECRETS BEFORE IMPORTS ---
+# We must load secrets into os.environ BEFORE importing src.config or src.graph
+# otherwise Pydantic will crash with "Field required"
 try:
     if hasattr(st, "secrets"):
         # 1. Load flat secrets
@@ -18,11 +29,19 @@ try:
         if "general" in st.secrets:
             for key, value in st.secrets["general"].items():
                 os.environ[key] = str(value)
-except FileNotFoundError:
-    pass # Local execution without secrets.toml
 except Exception:
-    pass # Other secrets errors, fallback to env vars
+    pass # Local execution or secrets not available
 
+# NOW it is safe to import internal modules that check environment variables
+try:
+    if os.environ.get("NO_API_MODE", "false").lower() == "true":
+        from src.graph import graph
+        print("⚠️ Running in STANDALONE mode (Direct Graph execution)")
+except ImportError:
+    pass # Handle errors later in the main logic
+
+
+# --- CONFIGURATION ---
 # Mode Selection: "api" (default) or "standalone" (Streamlit Cloud)
 # AUTO-DETECT: If API URL is localhost/127.0.0.1, assume Standalone (useful for cloud where localhost is empty)
 RAIL_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
