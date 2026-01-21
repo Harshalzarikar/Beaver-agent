@@ -9,7 +9,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 
 # Tools & Pipelines
-from transformers import pipeline
+# from transformers import pipeline # Removed unused dependency
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.chains.summarize import load_summarize_chain
 
@@ -34,11 +34,75 @@ load_dotenv(find_dotenv())
 TEST_MODE = False 
 
 # --- 2. DYNAMIC RESOURCE INITIALIZATION ---
-    # 3. HYBRID CLASSIFICATION (Cost Optimized)
-    # Tier 1: Zero-Shot Classifier (REMOVED for Cloud Stability - preventing OOM crashes)
-    # We proceed directly to Tier 2 (LLM Classification) which is more accurate and robust.
-    pass
 
+@lru_cache(maxsize=1)
+def get_llm():
+    """Factory function to initialize the selected LLM."""
+    provider = settings.model_provider
+    
+    if provider == "groq":
+        if not settings.groq_api_key:
+            logger.error("GROQ_API_KEY is missing")
+            raise ValueError("GROQ_API_KEY is required")
+            
+        logger.info("Connecting to Groq LPU...")
+        return ChatGroq(
+            model=settings.groq_model,
+            api_key=settings.groq_api_key,
+            temperature=settings.model_temperature,
+            max_retries=settings.model_max_retries
+        )
+        
+    elif provider == "gemini":
+        if not settings.google_api_key:
+            logger.error("GOOGLE_API_KEY is missing")
+            raise ValueError("GOOGLE_API_KEY is required")
+            
+        logger.info("Connecting to Google Gemini...")
+        return ChatGoogleGenerativeAI(
+            model=settings.gemini_model,
+            google_api_key=settings.google_api_key,
+            temperature=settings.model_temperature,
+            max_retries=settings.model_max_retries
+        )
+    
+    raise ValueError(f"Unknown provider: {provider}")
+
+@lru_cache(maxsize=1)
+def get_search_tool():
+    """Lazy load search tool."""
+    return TavilySearchResults(
+        max_results=3,
+        tavily_api_key=settings.tavily_api_key
+    )
+
+# --- 3. AGENT NODES ---
+
+def router_node(state: AgentState):
+    """Traffic Controller: PII Redaction -> Regex Spam -> AI Classify"""
+    tid = state.get("trace_id", "N/A")
+    raw_text = state['input_text']
+    
+    # 1. PII REDACTION
+    clean_text = pii_manager.anonymize(raw_text, trace_id=tid)
+    state['input_text'] = clean_text 
+    
+    logger.info("Router analyzing text", extra={"trace_id": tid})
+
+    # 2. HYBRID SPAM FILTER
+    spam_patterns = [
+        r"(click here|free iphone|lottery|winner|\$\$\$)",
+        r"(?!.*(unsubscribe|privacy policy))\b(buy now|limited time offer)\b",
+        r"(congratulations.*you have won)"
+    ]
+    for pattern in spam_patterns:
+        if re.search(pattern, clean_text, re.IGNORECASE):
+            logger.info("Spam detected pattern", extra={"trace_id": tid, "pattern": pattern})
+            return {"category": "spam", "confidence_score": 1.0}
+
+    # 3. DIRECT LLM CLASSIFICATION (Robust for Cloud)
+    # Skipped local zero-shot classifier to prevent OOM/Timeouts
+    
     # Tier 2: LLM Classification with Few-Shot Examples + Chain-of-Thought
     llm = get_llm()
     classify_prompt = f"""You are an expert email classifier. Classify the email into exactly ONE category.
