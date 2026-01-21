@@ -351,51 +351,85 @@ if process_btn:
                     st.stop()
             
             if data:
-                duration = round(time.time() - start_time, 2)
-                
-                # --- RESULTS DISPLAY ---
-                st.balloons()
-                
-                # Header Stats
-                s1, s2, s3, s4 = st.columns(4)
-                
-                cat = data.get('category', 'unknown')
-                cat_color = "status-lead" if cat == "lead" else "status-spam" if cat == "spam" else "status-complaint"
-                
-                with s1:
-                    st.markdown(f"**Category**<br><span class='status-badge {cat_color}'>{cat.upper()}</span>", unsafe_allow_html=True)
-                with s2:
-                    st.metric("Company", data.get('company', 'Unknown'))
-                with s3:
-                    st.metric("Trace ID", data.get('trace_id', 'N/A')[:8])
-                with s4:
-                    st.metric("Time", f"{duration}s")
-                
-                st.divider()
-                
-                # Content Split
-                r_col1, r_col2 = st.columns([1, 1])
-                
-                with r_col1:
-                    st.subheader("📝 Generated Draft")
-                    st.text_area("Draft Re-write", value=data.get('draft', 'No draft created'), height=400)
-                    st.download_button("💾 Download Draft", data=data.get('draft', ''), file_name=f"draft_{int(time.time())}.txt")
-                    
-                with r_col2:
-                    st.subheader("🧠 Analysis Details")
-                    with st.expander("🔍 Research Summary", expanded=True):
-                        st.write("Company info sourced during processing.")
-                        st.json({
-                            "Company": data.get('company'),
-                            "Confidence": f"{data.get('confidence_score', 0.0) * 100:.1f}%",
-                            "Source": "Tavily Search API"
-                        })
-                    
-                    with st.expander("🔒 PII Audit Log", expanded=False):
-                        st.info("Sensitive data was redacted and stored in secure vault.")
-                        st.code(f"Value: {data.get('category')}\nTrace: {data.get('trace_id')}", language="json")
+                st.session_state["analysis_result"] = data
+                st.session_state["analysis_time"] = round(time.time() - start_time, 2)
+                st.rerun() # Force rerun to render results from state
 
         except requests.exceptions.ConnectionError:
             st.error(f"❌ Could not connect to Backend at `{API_BASE}`. Is it running?")
         except Exception as e:
             st.error(f"❌ An unexpected error occurred: {e}")
+
+# --- DISPLAY RESULTS (PERSISTENT) ---
+if "analysis_result" in st.session_state:
+    data = st.session_state["analysis_result"]
+    duration = st.session_state.get("analysis_time", 0)
+    
+    # --- HERE IS THE PERSISTENT UI ---
+    
+    # Header Stats
+    s1, s2, s3, s4 = st.columns(4)
+    
+    cat = data.get('category', 'unknown')
+    cat_color = "status-lead" if cat == "lead" else "status-spam" if cat == "spam" else "status-complaint"
+    
+    with s1:
+        st.markdown(f"**Category**<br><span class='status-badge {cat_color}'>{cat.upper()}</span>", unsafe_allow_html=True)
+    with s2:
+        st.metric("Company", data.get('company', 'Unknown'))
+    with s3:
+        st.metric("Trace ID", data.get('trace_id', 'N/A')[:8])
+    with s4:
+        st.metric("Time", f"{duration}s")
+    
+    st.divider()
+    
+    # Content Split
+    r_col1, r_col2 = st.columns([1, 1])
+    
+    with r_col1:
+        st.subheader("📝 Generated Draft")
+        draft_text = st.text_area("Draft Re-write", value=data.get('draft', 'No draft created'), height=400)
+        
+        # --- SEND EMAIL UI ---
+        with st.expander("📤 Send Reply", expanded=True):
+            # Try to extract recipient from input if possible, else empty
+            recipient = ""
+            if "From:" in email_input:
+                for line in email_input.split("\n"):
+                    if line.startswith("From:"):
+                        recipient = line.replace("From:", "").strip()
+                        break
+                        
+            to_email = st.text_input("To:", value=recipient)
+            subject_line = st.text_input("Subject:", value=f"Re: Inquiry regarding {data.get('company', 'your request')}")
+            
+            if st.button("📨 Send Email Now"):
+                if not to_email or not draft_text:
+                    st.error("Missing Recipient or Body")
+                else:
+                    try:
+                        from src.delivery import EmailSender
+                        # USE UI CREDENTIALS IF AVAILABLE
+                        sender = EmailSender(user=email_user, password=email_pass)
+                        with st.spinner("Sending..."):
+                            sender.send_email(to_email, subject_line, draft_text)
+                        st.success(f"Email sent to {to_email}!")
+                    except Exception as e:
+                        st.error(f"Send Failed: {e}")
+
+        st.download_button("💾 Download Draft", data=draft_text, file_name=f"draft_{int(time.time())}.txt")
+        
+    with r_col2:
+        st.subheader("🧠 Analysis Details")
+        with st.expander("🔍 Research Summary", expanded=True):
+            st.write("Company info sourced during processing.")
+            st.json({
+                "Company": data.get('company'),
+                "Confidence": f"{data.get('confidence_score', 0.0) * 100:.1f}%",
+                "Source": "Tavily Search API"
+            })
+        
+        with st.expander("🔒 PII Audit Log", expanded=False):
+            st.info("Sensitive data was redacted and stored in secure vault.")
+            st.code(f"Value: {data.get('category')}\nTrace: {data.get('trace_id')}", language="json")

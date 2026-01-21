@@ -125,8 +125,11 @@ class Settings(BaseSettings):
         description="Maximum email text length"
     )
     
-    # --- Email Ingestion (IMAP) ---
+    # --- Email Ingestion (IMAP) & Delivery (SMTP) ---
     imap_server: str = Field(default="imap.gmail.com", description="IMAP Server Address")
+    smtp_server: str = Field(default="smtp.gmail.com", description="SMTP Server Address")
+    smtp_port: int = Field(default=587, description="SMTP Port (TLS)")
+    
     email_user: str | None = Field(default=None, description="Email Username")
     email_password: str | None = Field(default=None, description="Email App Password")
     

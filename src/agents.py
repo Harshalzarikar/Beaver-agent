@@ -171,6 +171,7 @@ Category: [lead/complaint/spam]"""
             "model": settings.model_provider
         })
         
+        print(f"--- Router Finished: Category={category} (Confidence: 0.95) ---")
         return {"category": category, "confidence_score": 0.95}  # High confidence for LLM with CoT
         
     except Exception as e:
@@ -216,9 +217,16 @@ def researcher_node(state: AgentState):
         return {"company_name": "Test Corp", "company_info": "Simulated Research Data"}
 
     logger.info("Researching sender", extra={"trace_id": tid})
+    print(f"--- Entering Researcher Node (Trace: {tid}) ---")
     
     llm = get_llm()
-    search_tool = get_search_tool()
+    
+    # Safely get search tool
+    if not settings.tavily_api_key:
+        print("⚠️ TAVILY_API_KEY Missing - Skipping Search")
+        search_tool = None
+    else:
+        search_tool = get_search_tool()
     
     company_name = "Unknown"
     summary = "No public information found."
@@ -296,11 +304,17 @@ Company Name:"""
         # 3. Web Search for company info
         if company_name and company_name != "Unknown":
             logger.info(f"Searching for company: {company_name}", extra={"trace_id": tid})
+            print(f"--- Calling Tavily Search for: {company_name} ---")
+            
             try:
-                search_results = search_tool.invoke(f"{company_name} company business")
-                if search_results:
-                    summary = "\n".join([res.get('content', '')[:500] for res in search_results[:2]])
+                if search_tool:
+                    search_results = search_tool.invoke(f"{company_name} company business")
+                    if search_results:
+                        summary = "\n".join([res.get('content', '')[:500] for res in search_results[:2]])
+                else:
+                    print("⚠️ Search tool unavailable/skipped")
             except Exception as e:
+                logger.warning("Search failed", extra={"error": str(e)})
                 logger.warning("Search failed", extra={"error": str(e)})
         
     except Exception as e:
