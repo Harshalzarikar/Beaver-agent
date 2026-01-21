@@ -1,7 +1,7 @@
 # Security: Ignore Secrets
 .env
 .env.local
-config.py
+# config.py # Removed to allow src/config.py to be pushed
 
 # Python: Ignore compiled files and virtual environments
 __pycache__/
