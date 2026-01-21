@@ -165,31 +165,123 @@ with st.sidebar:
     st.metric("Avg Latency", "1.2s")
 
 # --- MAIN CONTENT ---
+# --- HELPER: Callback to load email into manual input ---
+def load_email_for_analysis(subject, sender, body):
+    """Callback to set session state before widget rendering"""
+    content = f"Subject: {subject}\nFrom: {sender}\n\n{body}"
+    st.session_state["manual_input"] = content
+    # Switch to tab 0 (Manual) is not directly possible via state, but the text will be there.
+
+# --- MAIN CONTENT ---
 st.markdown("## 📨 Incoming Message Processor")
-st.markdown("Paste email content below to trigger the autonomous workflow.")
 
-col1, col2 = st.columns([2, 1])
+# Tabs for Input Method
+tab1, tab2 = st.tabs(["✍️ Write / Paste", "📥 Inbox (IMAP)"])
 
-with col1:
-    email_input = st.text_area(
-        "Email Content",
-        height=300,
-        placeholder="Subject: Enterprise License Inquiry\n\nHi team, I am interested in purchasing...",
-        label_visibility="collapsed"
-    )
+# --- TAB 1: MANUAL INPUT ---
+with tab1:
+    st.markdown("Paste email content below to trigger the autonomous workflow.")
+    col1, col2 = st.columns([2, 1])
 
-with col2:
-    st.markdown("#### 🎯 Capabilities")
-    st.markdown("""
-    - **PII Redaction**: Auto-removes sensitive data
-    - **Spam Filtering**: Hybrid Regex + AI detection
-    - **Smart Research**: Enriches lead data via Web
-    - **Auto-Drafting**: Context-aware replies
-    """)
+    with col1:
+        # Check if we need to initialize
+        if "manual_input" not in st.session_state:
+            st.session_state.manual_input = ""
+            
+        email_input = st.text_area(
+            "Email Content",
+            height=300,
+            placeholder="Subject: Enterprise License Inquiry\n\nHi team, I am interested in purchasing...",
+            label_visibility="collapsed",
+            key="manual_input"
+        )
+
+    with col2:
+        st.markdown("#### 🎯 Capabilities")
+        st.markdown("""
+        - **PII Redaction**: Auto-removes sensitive data
+        - **Spam Filtering**: Hybrid Regex + AI detection
+        - **Smart Research**: Enriches lead data via Web
+        - **Auto-Drafting**: Context-aware replies
+        """)
+        
+        st.markdown("#### ⚡ Actions")
+        process_btn = st.button("🚀 Process Email", key="process_manual", use_container_width=True)
+        clear_btn = st.button("🗑️ Clear", key="clear_manual", use_container_width=True)
+
+# --- TAB 2: INBOX (IMAP) ---
+with tab2:
+    st.markdown("#### Connect to Email Server")
     
-    st.markdown("#### ⚡ Actions")
-    process_btn = st.button("🚀 Process Email", use_container_width=True)
-    clear_btn = st.button("🗑️ Clear", use_container_width=True)
+    # Credentials Form
+    with st.expander("🔌 Connection Settings", expanded=False):
+        st.info("""
+        **Note for Gmail/Outlook Users:**  
+        You cannot use your login password. You must use an **App Password**.  
+        👉 [Click here to generate a Gmail App Password](https://myaccount.google.com/apppasswords)  
+        *(Select 'Mail' and 'Mac/Windows Computer')*
+        """)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            imap_server = st.text_input("IMAP Server", value=os.environ.get("IMAP_SERVER", "imap.gmail.com"))
+        with c2:
+            email_user = st.text_input("Email User", value=os.environ.get("EMAIL_USER", ""))
+        with c3:
+            email_pass = st.text_input("App Password", type="password", help="The 16-character code from Google", value=os.environ.get("EMAIL_PASSWORD", ""))
+            
+    fetch_btn = st.button("🔄 Fetch Unread Emails")
+    
+    if "fetched_emails" not in st.session_state:
+        st.session_state.fetched_emails = []
+        
+    if fetch_btn:
+        if not email_user or not email_pass:
+            st.error("Please provide Email User and App Password.")
+        else:
+            try:
+                from src.ingestion import EmailIngestor
+                ingestor = EmailIngestor(server=imap_server, user=email_user, password=email_pass)
+                with st.spinner("Connecting to Inbox..."):
+                    ingestor.connect()
+                    emails = ingestor.fetch_recent_emails(limit=5)
+                    st.session_state.fetched_emails = emails
+                    if not emails:
+                        st.info("No unread emails found.")
+                    else:
+                        st.success(f"Fetched {len(emails)} emails!")
+                    ingestor.close()
+            except Exception as e:
+                st.error(f"Failed to fetch emails: {e}")
+
+    # Display Emails
+    if st.session_state.fetched_emails:
+        st.markdown("### 📥 Unread Messages")
+        for i, email in enumerate(st.session_state.fetched_emails):
+            with st.container():
+                ec1, ec2 = st.columns([5, 1])
+                with ec1:
+                    st.markdown(f"**{email['subject']}**")
+                    st.caption(f"From: {email['sender']} | {email['date']}")
+                    with st.expander("View Body"):
+                        st.text(email['body'][:500] + "...")
+                with ec2:
+                    # Use Callback to safely update state
+                    st.button(
+                        "Analyze 🚀", 
+                        key=f"analyze_{i}",
+                        on_click=load_email_for_analysis,
+                        args=(email['subject'], email['sender'], email['body'])
+                    )
+                st.divider()
+
+# Logic to handle processing (Shared)
+# The text_area widget automatically updates st.session_state.manual_input
+# So we just read from the widget's return value 'email_input' which is already correct.
+if "manual_input" in st.session_state and st.session_state.manual_input:
+     # Validated input exists
+     pass
+
+
 
 if clear_btn:
     st.rerun()
