@@ -1,18 +1,49 @@
-# Security: Ignore Secrets
+# --- Security & Secrets ---
 .env
-.env.local
-# config.py # Removed to allow src/config.py to be pushed
+.env.*
+!.env.example
 
-# Python: Ignore compiled files and virtual environments
+# --- Python ---
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
 env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# Data: Ignore local database files
+# --- Node / Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+
+# --- Databases ---
 *.db
+*.db-journal
 *.sqlite3
+*.sqlite3-journal
 
-# Logs
-*.log
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Scratch & Temp ---
+scratch/
+tmp/
+temp/

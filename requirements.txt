@@ -3,27 +3,11 @@ langgraph
 langchain-community
 tavily-python
 python-dotenv
-termcolor
 langchain-tavily
-transformers
-torch
-presidio-analyzer
-langgraph-checkpoint-sqlite
 fastapi
 uvicorn
 requests
 streamlit
-locust
-langchain-classic
-langchain-openai
 pydantic-settings
-python-json-logger
-prometheus-client
-slowapi
-redis
-cryptography
-groq
 langchain-groq
 beautifulsoup4
-# Install spaCy model directly as a package to avoid runtime download permission errors
-https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl

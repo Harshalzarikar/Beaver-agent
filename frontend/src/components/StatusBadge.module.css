@@ -1,0 +1,29 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.lead {
+  color: var(--lead);
+  background: var(--lead-bg);
+  border-color: rgba(34, 211, 165, 0.2);
+}
+
+.complaint {
+  color: var(--complaint);
+  background: var(--complaint-bg);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.spam {
+  color: var(--spam);
+  background: var(--spam-bg);
+  border-color: rgba(248, 113, 113, 0.2);
+}
